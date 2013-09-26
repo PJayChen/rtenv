@@ -105,6 +105,9 @@ struct task_control_block {
     struct task_control_block  *next;
 };
 
+struct task_control_block tasks[TASK_LIMIT];
+size_t task_count = 0;
+
 /* 
  * pathserver assumes that all files are FIFOs that were registered
  * with mkfifo.  It also assumes a global tables of FDs shared by all
@@ -320,14 +323,53 @@ int strLength(char *str){
     return length + 1;
 }
 
+char *get_task_status(int status)
+{
+	switch(status) {
+		case TASK_READY:
+			return "TASK_READY     ";
+		case TASK_WAIT_READ:
+			return "TASK_WAIT_READ ";
+		case TASK_WAIT_WRITE:
+			return "TASK_WAIT_WRITE";
+		case TASK_WAIT_INTR:
+			return "TASK_WAIT_INTR ";
+		case TASK_WAIT_TIME:
+			return "ASK_WAIT_TIME  ";
+		default:
+			return "UNKNOW STATUS  ";
+	}
+}
+
+
+//support from 0~999 integer to string
+void itoa(int in_num, char *out_str){
+    int tmp1, tmp2;
+
+    if(in_num == 0){
+		for(tmp1 = 0; tmp1<=2; tmp1++) *(out_str + tmp1) = '0';
+    }else if(in_num > 0){
+        tmp1 = in_num % 100;
+        out_str[0] = '0' + (in_num - tmp1) / 100;
+        tmp2 = in_num % 10; 
+        out_str[1] = '0' + (tmp1 - tmp2) / 10; 
+        out_str[2] = '0' + tmp2;
+    }
+    out_str[3] = '\0';
+}
+
 void serial_readwrite_task()
 {
 	int fdout, fdin;
 	char str[100];
+	char echo_str[2] = {'\0', '\0'};
 	char cmd_str[10];
 	char data_str[100];
 	char newLine[3] = {'\r', '\n', '\0'};
 	char backspace[4] = {'\b', ' ', '\b', '\0'};
+	char title[] = "shell>>";
+	char hello[] = "Hello World!!!!";
+    char ps_title[] = "PID        status           priority\n\r";
 	char ch;
 	int curr_char;
 	int count;
@@ -342,6 +384,9 @@ void serial_readwrite_task()
 	while (1) {
 		curr_char = 0;
 		done = 0;
+		str[0] = '\0';
+        write(fdout, &title, strLength(title));
+
 		do {
 			/* Receive a byte from the RS232 port (this call will
 			 * block). */
@@ -351,45 +396,65 @@ void serial_readwrite_task()
 			 * finish the string and inidcate we are done.
 			 */
 			if (curr_char >= 98 || (ch == '\r') || (ch == '\n')) {
-             				
-                write(fdout, &newLine, strLength(newLine));
-
-                count = 0;
-                while(str[count] != ' ' && str[count] != '\0'){
-                    cmd_str[count] = str[count];
-                    count++;    
-                }
-                cmd_str[count] = '\0';
-                
-                while(str[count] != '\0'){
-                    data_str[count] = str[count];
-                    count++;
-                }
-                data_str[count] = '\0';
-
-                if(!strcmp(cmd_str,"echo")){
-                    write(fdout, &data_str, strLength(data_str));
-                }else{
-                    write(fdout, "No That Cmd",12);                
-                }
-
-				done = -1;
-				/* Otherwise, add the character to the
-				 * response string. */
+             	str[curr_char] = '\0';
+                write(fdout, &newLine, strLength(newLine));              
+				done = -1;				
 			}
 			else if(ch != 127){
 				str[curr_char++] = ch;
-                write(fdout, &ch, 1);
-			}else if(ch == 127){
+				echo_str[0] = ch;
+                write(fdout, echo_str, 2);
+			}else if(ch == 127 && curr_char > 0){
                 write(fdout, &backspace, strLength(backspace));
-            }
+				curr_char--;
+				str[curr_char] = '\0';
+            }//End of if
 		} while (!done);
 
-		/* Once we are done building the response string, queue the
-		 * response to be sent to the RS232 port.
-		 */
-		//write(fdout, str, curr_char+1+1);
-	}
+
+		//------ cmd ------- 
+
+		if(!strncmp(str,"echo", 4)){
+            //remove the "echo " in the str[]
+			curr_char = 5;     
+			while(str[curr_char] != '\0'){
+		        str[curr_char - 5] = str[curr_char];
+		        curr_char++;
+		    }//End of while			
+        	str[curr_char - 5] = '\0';
+
+
+            write(fdout, &str, strLength(str));  
+        
+		}else if(!strncmp(str,"ps", 2)){
+			char tmp[16];
+			int i;
+			write(fdout, "-----------------------------\n\r\0",strLength("-----------------------------\n\r\0"));
+            write(fdout, &ps_title, strLength(ps_title));	    	
+            for(i = 0; i < task_count; i++) {
+                
+	    	    itoa(tasks[i].pid, tmp);
+				write(fdout, &tmp, strLength(tmp));
+                write(fdout, "     ", strLength("     ")); 
+    			
+				write(fdout, get_task_status(tasks[i].status), strLength(get_task_status(tasks[i].status)));
+                write(fdout, "     ", strLength("     "));                     
+
+				itoa(tasks[i].priority, tmp);
+				write(fdout, &tmp, strLength(tmp));
+
+				write(fdout, &newLine, strLength(newLine));
+			}//End of for
+		
+		}else if(!strncmp(str,"hello", 5)){
+			write(fdout, &hello, strLength(hello));
+		
+		}else{            
+			write(fdout, "No That Cmd\0",13);                
+        }//End of if
+		write(fdout, &newLine, strLength(newLine));
+
+	}//End of while
 }
 
 void first()
@@ -703,11 +768,11 @@ _mknod(struct pipe_ringbuffer *pipe, int dev)
 int main()
 {
 	unsigned int stacks[TASK_LIMIT][STACK_SIZE];
-	struct task_control_block tasks[TASK_LIMIT];
+	//struct task_control_block tasks[TASK_LIMIT];
 	struct pipe_ringbuffer pipes[PIPE_LIMIT];
 	struct task_control_block *ready_list[PRIORITY_LIMIT + 1];  /* [0 ... 39] */
 	struct task_control_block *wait_list = NULL;
-	size_t task_count = 0;
+	//size_t task_count = 0;
 	size_t current_task = 0;
 	size_t i;
 	struct task_control_block *task;
