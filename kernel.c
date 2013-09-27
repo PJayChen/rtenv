@@ -369,7 +369,7 @@ void serial_readwrite_task()
 	char backspace[4] = {'\b', ' ', '\b', '\0'};
 	char title[] = "shell>>";
 	char hello[] = "Hello World!!!!";
-    char ps_title[] = "PID        status           priority\n\r";
+    char ps_title[] = "PID\tstatus\t\tpriority\n\r";
 	char ch;
 	int curr_char;
 	int count;
@@ -435,10 +435,10 @@ void serial_readwrite_task()
                 
 	    	    itoa(tasks[i].pid, tmp);
 				write(fdout, &tmp, strLength(tmp));
-                write(fdout, "     ", strLength("     ")); 
+                write(fdout, "\t", strLength("\t")); 
     			
 				write(fdout, get_task_status(tasks[i].status), strLength(get_task_status(tasks[i].status)));
-                write(fdout, "     ", strLength("     "));                     
+                write(fdout, "\t", strLength("\t"));                     
 
 				itoa(tasks[i].priority, tmp);
 				write(fdout, &tmp, strLength(tmp));
