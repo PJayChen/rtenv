@@ -376,7 +376,8 @@ void serial_readwrite_task()
 	int done;
 
     typedef enum{
-        TYPE = 1,        
+        NONE,        
+        TYPE ,        
         ENTER,
         BACKSPACE,        
     }key_type;
@@ -403,15 +404,15 @@ void serial_readwrite_task()
 			/* If the byte is an end-of-line type character, then
 			 * finish the string and inidcate we are done.
 			 */
-
+            
             if (curr_char >= 98 || (ch == '\r') || (ch == '\n')) {
-             	key = 2;			
+             	key = ENTER;			
 			}
 			else if(ch != 127){
-				key = 1;
+				key = TYPE;
 			}else if(ch == 127 && curr_char > 0){
-                key = 3;
-            }else key = 0;
+                key = BACKSPACE;
+            }else key = NONE;
             
             switch(key){
                 case TYPE:
