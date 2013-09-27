@@ -375,6 +375,13 @@ void serial_readwrite_task()
 	int count;
 	int done;
 
+    typedef enum{
+        TYPE = 1,        
+        ENTER,
+        BACKSPACE,        
+    }key_type;
+    key_type key;
+
 	fdout = mq_open("/tmp/mqueue/out", 0);
 	fdin = open("/dev/tty0/in", 0);
 
@@ -385,6 +392,7 @@ void serial_readwrite_task()
 		curr_char = 0;
 		done = 0;
 		str[0] = '\0';
+
         write(fdout, &title, strLength(title));
 
 		do {
@@ -395,20 +403,35 @@ void serial_readwrite_task()
 			/* If the byte is an end-of-line type character, then
 			 * finish the string and inidcate we are done.
 			 */
-			if (curr_char >= 98 || (ch == '\r') || (ch == '\n')) {
-             	str[curr_char] = '\0';
-                write(fdout, &newLine, strLength(newLine));              
-				done = -1;				
+
+            if (curr_char >= 98 || (ch == '\r') || (ch == '\n')) {
+             	key = 2;			
 			}
 			else if(ch != 127){
-				str[curr_char++] = ch;
-				echo_str[0] = ch;
-                write(fdout, echo_str, 2);
+				key = 1;
 			}else if(ch == 127 && curr_char > 0){
-                write(fdout, &backspace, strLength(backspace));
-				curr_char--;
-				str[curr_char] = '\0';
-            }//End of if
+                key = 3;
+            }else key = 0;
+            
+            switch(key){
+                case TYPE:
+                    str[curr_char++] = ch;
+				    echo_str[0] = ch;
+                    write(fdout, echo_str, 2);                
+                    break;
+                case BACKSPACE:
+                    write(fdout, &backspace, strLength(backspace));
+				    curr_char--;
+				    str[curr_char] = '\0';
+                    break;
+                case ENTER:
+                    str[curr_char] = '\0';
+                    write(fdout, &newLine, strLength(newLine));              
+				    done = -1;			
+                    break;
+                default:;
+            }//End of switch
+			
 		} while (!done);
 
 
@@ -422,7 +445,6 @@ void serial_readwrite_task()
 		        curr_char++;
 		    }//End of while			
         	str[curr_char - 5] = '\0';
-
 
             write(fdout, &str, strLength(str));  
         
